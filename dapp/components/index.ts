@@ -11,6 +11,14 @@ export { default as MarketplaceStats } from "./MarketplaceStats";
 export { default as MarketplaceInvoiceCard } from "./MarketplaceInvoiceCard";
 export { default as MarketplaceInvoiceList } from "./MarketplaceInvoiceList";
 
+// Investor Dashboard Components
+export { default as InvestorDashboardHeader } from "./InvestorDashboardHeader";
+export { default as PortfolioStatsCards } from "./PortfolioStatsCards";
+export { default as InvestmentCard } from "./InvestmentCard";
+export { default as InvestmentList } from "./InvestmentList";
+export { default as PortfolioDistribution } from "./PortfolioDistribution";
+export { default as PerformanceMetrics } from "./PerformanceMetrics";
+
 // Existing Components
 export { default as Navigation } from "./Navigation";
 export { default as StatsOverview } from "./StatsOverview";
@@ -22,3 +30,7 @@ export type { InvoiceFormData } from "./CreateInvoiceForm";
 export type { MarketplaceInvoice } from "./MarketplaceInvoiceCard";
 export type { FilterValues } from "./MarketplaceFilters";
 export type { MarketplaceStatsData } from "./MarketplaceStats";
+export type { Investment } from "./InvestmentCard";
+export type { PortfolioStats } from "./PortfolioStatsCards";
+export type { DistributionItem } from "./PortfolioDistribution";
+export type { MetricItem } from "./PerformanceMetrics";
