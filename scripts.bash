@@ -52,6 +52,12 @@ function setup_active_address() {
   echo "ACTIVE_ADDRESS set to $ACTIVE_ADDRESS"
 }
 
+function install_app() {
+  echo "Installing Next.js app dependencies..."
+  yarn --cwd ./dapp
+  cd .. || exit
+}
+
 function install() {
   echo "Installing dependencies and setting up local configuration..."
   # get Node.js version
@@ -68,6 +74,7 @@ function install() {
     exit 1
   fi
   setup_active_address
+  install_app
 }
 
 function build_contract() {
@@ -143,6 +150,13 @@ function upgrade_contract() {
     echo " [ ERROR ] Contract upgrade failed"
     exit 1
   fi
+}
+
+function start_dev_server() {
+  echo "Starting Next.js development server..."
+  cd ./dapp || exit
+  yarn dev
+  cd .. || exit
 }
 
 $1
