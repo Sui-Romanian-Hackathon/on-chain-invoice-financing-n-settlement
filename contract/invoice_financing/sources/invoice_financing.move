@@ -1,17 +1,18 @@
 module invoice_financing::invoice_financing;
 
 public struct Invoice has key {
-    id: UID,
+    id: sui::object::UID,
     amount: u64,
     owner: address,
 }
 
-fun init(_ctx: &mut TxContext) {}
+fun init(_ctx: &mut sui::tx_context::TxContext) {}
 
-public fun create_invoice(amount: u64, ctx: &mut TxContext): Invoice {
-    return Invoice {
-        id: object::new(ctx),
+public fun create_invoice(amount: u64, ctx: &mut sui::tx_context::TxContext) {
+    let invoice = Invoice {
+        id: sui::object::new(ctx),
         amount,
-        owner: tx_context::sender(ctx),
-    }
+        owner: sui::tx_context::sender(ctx),
+    };
+    sui::transfer::transfer(invoice, sui::tx_context::sender(ctx));
 }
