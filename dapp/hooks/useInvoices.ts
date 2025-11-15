@@ -3,7 +3,12 @@
 import { useWalletKit } from "@mysten/wallet-kit";
 import { SuiClient } from "@mysten/sui.js/client";
 import { useQuery } from "@tanstack/react-query";
-import { OnChainInvoice, formatSuiAmount, InvoiceFilters, InvoiceStatus } from "@/types/invoice";
+import {
+  OnChainInvoice,
+  formatSuiAmount,
+  InvoiceFilters,
+  InvoiceStatus,
+} from "@/types/invoice";
 
 export function useInvoices(filters?: InvoiceFilters) {
   const { currentAccount } = useWalletKit();
@@ -11,9 +16,10 @@ export function useInvoices(filters?: InvoiceFilters) {
   const network = process.env.NEXT_PUBLIC_NETWORK || "testnet";
 
   const suiClient = new SuiClient({
-    url: network === "mainnet" 
-      ? "https://fullnode.mainnet.sui.io:443"
-      : "https://fullnode.testnet.sui.io:443"
+    url:
+      network === "mainnet"
+        ? "https://fullnode.mainnet.sui.io:443"
+        : "https://fullnode.testnet.sui.io:443",
   });
 
   const fetchInvoices = async (): Promise<OnChainInvoice[]> => {
@@ -40,19 +46,21 @@ export function useInvoices(filters?: InvoiceFilters) {
 
       const events = await suiClient.queryEvents({
         query: {
-          MoveEventType: `${packageId}::invoice_financing::InvoiceCreated`
+          MoveEventType: `${packageId}::invoice_financing::InvoiceCreated`,
         },
         limit: 50, // Adjust as needed
-        order: 'descending'
+        order: "descending",
       });
 
       console.log("Events found:", events.data.length);
 
       // Extract invoice IDs from events
-      const invoiceIds = events.data.map(event => {
-        const parsedJson = event.parsedJson as any;
-        return parsedJson?.invoice_id;
-      }).filter(Boolean);
+      const invoiceIds = events.data
+        .map((event) => {
+          const parsedJson = event.parsedJson as any;
+          return parsedJson?.invoice_id;
+        })
+        .filter(Boolean);
 
       console.log("Invoice IDs:", invoiceIds);
 
@@ -65,7 +73,7 @@ export function useInvoices(filters?: InvoiceFilters) {
               options: {
                 showContent: true,
                 showOwner: true,
-              }
+              },
             });
             return obj;
           } catch (error) {
@@ -79,25 +87,28 @@ export function useInvoices(filters?: InvoiceFilters) {
 
       // Parse invoice data
       const invoices: OnChainInvoice[] = invoiceObjects
-        .filter(obj => obj && obj.data?.content)
-        .map(obj => {
+        .filter(
+          (obj): obj is NonNullable<typeof obj> =>
+            obj !== null && obj.data?.content !== undefined
+        )
+        .map((obj) => {
           const content = obj.data!.content as any;
           const fields = content.fields;
 
           const invoice: OnChainInvoice = {
             id: obj.data!.objectId,
-            invoiceNumber: Buffer.from(fields.invoice_number).toString('utf-8'),
+            invoiceNumber: Buffer.from(fields.invoice_number).toString("utf-8"),
             issuer: fields.issuer,
-            buyer: Buffer.from(fields.buyer).toString('utf-8'),
+            buyer: Buffer.from(fields.buyer).toString("utf-8"),
             amount: fields.amount,
             amountInSui: formatSuiAmount(fields.amount),
             dueDate: parseInt(fields.due_date),
-            description: Buffer.from(fields.description).toString('utf-8'),
+            description: Buffer.from(fields.description).toString("utf-8"),
             createdAt: parseInt(fields.created_at),
             status: parseInt(fields.status),
             financedBy: fields.financed_by ? fields.financed_by : undefined,
-            financedAmount: fields.financed_amount || '0',
-            financedAmountInSui: formatSuiAmount(fields.financed_amount || '0'),
+            financedAmount: fields.financed_amount || "0",
+            financedAmountInSui: formatSuiAmount(fields.financed_amount || "0"),
           };
 
           return invoice;
@@ -109,26 +120,27 @@ export function useInvoices(filters?: InvoiceFilters) {
       // Apply filters
       let filteredInvoices = invoices;
 
-      if (filters?.status && filters.status !== 'all') {
+      if (filters?.status && filters.status !== "all") {
         const statusMap = {
           pending: InvoiceStatus.PENDING,
           funded: InvoiceStatus.FUNDED,
           repaid: InvoiceStatus.REPAID,
         };
         filteredInvoices = filteredInvoices.filter(
-          inv => inv.status === statusMap[filters.status as keyof typeof statusMap]
+          (inv) =>
+            inv.status === statusMap[filters.status as keyof typeof statusMap]
         );
       }
 
       if (filters?.minAmount) {
         filteredInvoices = filteredInvoices.filter(
-          inv => inv.amountInSui >= filters.minAmount!
+          (inv) => inv.amountInSui >= filters.minAmount!
         );
       }
 
       if (filters?.maxAmount) {
         filteredInvoices = filteredInvoices.filter(
-          inv => inv.amountInSui <= filters.maxAmount!
+          (inv) => inv.amountInSui <= filters.maxAmount!
         );
       }
 
@@ -138,15 +150,15 @@ export function useInvoices(filters?: InvoiceFilters) {
           let aVal: number, bVal: number;
 
           switch (filters.sortBy) {
-            case 'amount':
+            case "amount":
               aVal = a.amountInSui;
               bVal = b.amountInSui;
               break;
-            case 'dueDate':
+            case "dueDate":
               aVal = a.dueDate;
               bVal = b.dueDate;
               break;
-            case 'createdAt':
+            case "createdAt":
               aVal = a.createdAt;
               bVal = b.createdAt;
               break;
@@ -154,7 +166,7 @@ export function useInvoices(filters?: InvoiceFilters) {
               return 0;
           }
 
-          const order = filters.sortOrder === 'desc' ? -1 : 1;
+          const order = filters.sortOrder === "desc" ? -1 : 1;
           return (aVal - bVal) * order;
         });
       }
@@ -171,7 +183,7 @@ export function useInvoices(filters?: InvoiceFilters) {
   };
 
   return useQuery({
-    queryKey: ['invoices', packageId, filters],
+    queryKey: ["invoices", packageId, filters],
     queryFn: fetchInvoices,
     enabled: !!packageId,
     refetchInterval: 10000, // Refetch every 10 seconds
@@ -184,9 +196,10 @@ export function useInvoice(invoiceId: string) {
   const network = process.env.NEXT_PUBLIC_NETWORK || "testnet";
 
   const suiClient = new SuiClient({
-    url: network === "mainnet" 
-      ? "https://fullnode.mainnet.sui.io:443"
-      : "https://fullnode.testnet.sui.io:443"
+    url:
+      network === "mainnet"
+        ? "https://fullnode.mainnet.sui.io:443"
+        : "https://fullnode.testnet.sui.io:443",
   });
 
   const fetchInvoice = async (): Promise<OnChainInvoice | null> => {
@@ -198,7 +211,7 @@ export function useInvoice(invoiceId: string) {
         options: {
           showContent: true,
           showOwner: true,
-        }
+        },
       });
 
       if (!obj.data?.content) return null;
@@ -208,18 +221,18 @@ export function useInvoice(invoiceId: string) {
 
       return {
         id: obj.data.objectId,
-        invoiceNumber: Buffer.from(fields.invoice_number).toString('utf-8'),
+        invoiceNumber: Buffer.from(fields.invoice_number).toString("utf-8"),
         issuer: fields.issuer,
-        buyer: Buffer.from(fields.buyer).toString('utf-8'),
+        buyer: Buffer.from(fields.buyer).toString("utf-8"),
         amount: fields.amount,
         amountInSui: formatSuiAmount(fields.amount),
         dueDate: parseInt(fields.due_date),
-        description: Buffer.from(fields.description).toString('utf-8'),
+        description: Buffer.from(fields.description).toString("utf-8"),
         createdAt: parseInt(fields.created_at),
         status: parseInt(fields.status),
         financedBy: fields.financed_by,
-        financedAmount: fields.financed_amount || '0',
-        financedAmountInSui: formatSuiAmount(fields.financed_amount || '0'),
+        financedAmount: fields.financed_amount || "0",
+        financedAmountInSui: formatSuiAmount(fields.financed_amount || "0"),
       };
     } catch (error) {
       console.error("Error fetching invoice:", error);
@@ -228,7 +241,7 @@ export function useInvoice(invoiceId: string) {
   };
 
   return useQuery({
-    queryKey: ['invoice', invoiceId],
+    queryKey: ["invoice", invoiceId],
     queryFn: fetchInvoice,
     enabled: !!invoiceId,
   });
@@ -241,9 +254,10 @@ export function useMyInvoices() {
   const network = process.env.NEXT_PUBLIC_NETWORK || "testnet";
 
   const suiClient = new SuiClient({
-    url: network === "mainnet" 
-      ? "https://fullnode.mainnet.sui.io:443"
-      : "https://fullnode.testnet.sui.io:443"
+    url:
+      network === "mainnet"
+        ? "https://fullnode.mainnet.sui.io:443"
+        : "https://fullnode.testnet.sui.io:443",
   });
 
   const fetchMyInvoices = async (): Promise<OnChainInvoice[]> => {
@@ -254,34 +268,34 @@ export function useMyInvoices() {
       const ownedObjects = await suiClient.getOwnedObjects({
         owner: currentAccount.address,
         filter: {
-          StructType: `${packageId}::invoice_financing::Invoice`
+          StructType: `${packageId}::invoice_financing::Invoice`,
         },
         options: {
           showContent: true,
           showOwner: true,
-        }
+        },
       });
 
       const invoices = ownedObjects.data
-        .filter(obj => obj.data?.content)
-        .map(obj => {
+        .filter((obj) => obj.data?.content)
+        .map((obj) => {
           const content = obj.data!.content as any;
           const fields = content.fields;
 
           return {
             id: obj.data!.objectId,
-            invoiceNumber: Buffer.from(fields.invoice_number).toString('utf-8'),
+            invoiceNumber: Buffer.from(fields.invoice_number).toString("utf-8"),
             issuer: fields.issuer,
-            buyer: Buffer.from(fields.buyer).toString('utf-8'),
+            buyer: Buffer.from(fields.buyer).toString("utf-8"),
             amount: fields.amount,
             amountInSui: formatSuiAmount(fields.amount),
             dueDate: parseInt(fields.due_date),
-            description: Buffer.from(fields.description).toString('utf-8'),
+            description: Buffer.from(fields.description).toString("utf-8"),
             createdAt: parseInt(fields.created_at),
             status: parseInt(fields.status),
             financedBy: fields.financed_by,
-            financedAmount: fields.financed_amount || '0',
-            financedAmountInSui: formatSuiAmount(fields.financed_amount || '0'),
+            financedAmount: fields.financed_amount || "0",
+            financedAmountInSui: formatSuiAmount(fields.financed_amount || "0"),
           };
         });
 
@@ -293,10 +307,9 @@ export function useMyInvoices() {
   };
 
   return useQuery({
-    queryKey: ['my-invoices', currentAccount?.address, packageId],
+    queryKey: ["my-invoices", currentAccount?.address, packageId],
     queryFn: fetchMyInvoices,
     enabled: !!currentAccount && !!packageId,
     refetchInterval: 10000,
   });
 }
-
