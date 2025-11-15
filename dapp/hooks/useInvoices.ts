@@ -248,6 +248,8 @@ export function useInvoice(invoiceId: string) {
 }
 
 // Hook to fetch user's invoices (created by them)
+// Uses event-based query to find all invoices where issuer = current user
+// This works even after invoices are financed and ownership transfers
 export function useMyInvoices() {
   const { currentAccount } = useWalletKit();
   const packageId = process.env.NEXT_PUBLIC_PACKAGE_ID;
@@ -263,27 +265,71 @@ export function useMyInvoices() {
   const fetchMyInvoices = async (): Promise<OnChainInvoice[]> => {
     if (!currentAccount || !packageId) return [];
 
+    console.group("📋 Fetching My Invoices (Business Dashboard)");
+    console.log("Issuer Address:", currentAccount.address);
+    console.log("Package ID:", packageId);
+
     try {
-      // Get objects owned by current user
-      const ownedObjects = await suiClient.getOwnedObjects({
-        owner: currentAccount.address,
-        filter: {
-          StructType: `${packageId}::invoice_financing::Invoice`,
+      // Query InvoiceCreated events to find all invoices created by this user
+      // This is the correct approach per the documentation - event-based indexing
+      const events = await suiClient.queryEvents({
+        query: {
+          MoveEventType: `${packageId}::invoice_financing::InvoiceCreated`,
         },
-        options: {
-          showContent: true,
-          showOwner: true,
-        },
+        limit: 100, // Adjust as needed
+        order: "descending",
       });
 
-      const invoices = ownedObjects.data
-        .filter((obj) => obj.data?.content)
+      console.log("Total InvoiceCreated events found:", events.data.length);
+
+      // Filter events where issuer matches current user
+      const myInvoiceEvents = events.data.filter((event) => {
+        const parsedJson = event.parsedJson as any;
+        return parsedJson?.issuer === currentAccount.address;
+      });
+
+      console.log("Events for this issuer:", myInvoiceEvents.length);
+
+      // Extract invoice IDs from events
+      const invoiceIds = myInvoiceEvents
+        .map((event) => {
+          const parsedJson = event.parsedJson as any;
+          return parsedJson?.invoice_id;
+        })
+        .filter(Boolean);
+
+      console.log("Invoice IDs:", invoiceIds);
+
+      // Fetch each invoice object by ID
+      const invoiceObjects = await Promise.all(
+        invoiceIds.map(async (id) => {
+          try {
+            const obj = await suiClient.getObject({
+              id: id,
+              options: {
+                showContent: true,
+                showOwner: true,
+              },
+            });
+            return obj;
+          } catch (error) {
+            console.error(`Error fetching invoice ${id}:`, error);
+            return null;
+          }
+        })
+      );
+
+      console.log("Successfully fetched objects:", invoiceObjects.filter(o => o !== null).length);
+
+      // Parse invoice data
+      const invoices = invoiceObjects
+        .filter((obj) => obj !== null && obj.data?.content)
         .map((obj) => {
-          const content = obj.data!.content as any;
+          const content = obj!.data!.content as any;
           const fields = content.fields;
 
-          return {
-            id: obj.data!.objectId,
+          const invoice: OnChainInvoice = {
+            id: obj!.data!.objectId,
             invoiceNumber: Buffer.from(fields.invoice_number).toString("utf-8"),
             issuer: fields.issuer,
             buyer: Buffer.from(fields.buyer).toString("utf-8"),
@@ -293,15 +339,35 @@ export function useMyInvoices() {
             description: Buffer.from(fields.description).toString("utf-8"),
             createdAt: parseInt(fields.created_at),
             status: parseInt(fields.status),
-            financedBy: fields.financed_by,
+            financedBy: fields.financed_by ? fields.financed_by : undefined,
             financedAmount: fields.financed_amount || "0",
             financedAmountInSui: formatSuiAmount(fields.financed_amount || "0"),
+            // New fields from updated contract
+            investorPaid: fields.investor_paid,
+            investorPaidInSui: fields.investor_paid ? formatSuiAmount(fields.investor_paid) : undefined,
+            supplierReceived: fields.supplier_received,
+            supplierReceivedInSui: fields.supplier_received ? formatSuiAmount(fields.supplier_received) : undefined,
+            originationFeeCollected: fields.origination_fee_collected,
+            originationFeeCollectedInSui: fields.origination_fee_collected ? formatSuiAmount(fields.origination_fee_collected) : undefined,
+            discountRateBps: fields.discount_rate_bps,
           };
+
+          return invoice;
         });
+
+      console.log("Parsed invoices:", invoices.length);
+      console.log("Status breakdown:", {
+        pending: invoices.filter(i => i.status === InvoiceStatus.PENDING).length,
+        funded: invoices.filter(i => i.status === InvoiceStatus.FUNDED).length,
+        repaid: invoices.filter(i => i.status === InvoiceStatus.REPAID).length,
+        defaulted: invoices.filter(i => i.status === InvoiceStatus.DEFAULTED).length,
+      });
+      console.groupEnd();
 
       return invoices;
     } catch (error) {
       console.error("Error fetching my invoices:", error);
+      console.groupEnd();
       return [];
     }
   };

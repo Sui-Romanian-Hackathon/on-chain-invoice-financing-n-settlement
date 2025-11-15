@@ -170,6 +170,20 @@ const CreateInvoiceForm = ({ onSuccess }: CreateInvoiceFormProps) => {
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="document">Invoice Document (Optional)</Label>
+            <Input
+              id="document"
+              name="document"
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg"
+              className="cursor-pointer"
+            />
+            <p className="text-sm text-muted-foreground">
+              Upload invoice PDF or image. Document hash will be stored on-chain for verification.
+            </p>
+          </div>
+
           <Button 
             type="submit" 
             className="w-full"
