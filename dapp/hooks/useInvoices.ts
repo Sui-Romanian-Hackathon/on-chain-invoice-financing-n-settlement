@@ -314,8 +314,8 @@ export function useMyInvoices() {
   });
 }
 
-// Hook to fetch invoices financed by current user (investor/financier)
-export function useFinancedInvoices() {
+// Hook to fetch invoices financed by the current user
+export function useMyInvestments() {
   const { currentAccount } = useWalletKit();
   const packageId = process.env.NEXT_PUBLIC_PACKAGE_ID;
   const network = process.env.NEXT_PUBLIC_NETWORK || "testnet";
@@ -327,34 +327,44 @@ export function useFinancedInvoices() {
         : "https://fullnode.testnet.sui.io:443",
   });
 
-  const fetchFinancedInvoices = async (): Promise<OnChainInvoice[]> => {
+  const fetchMyInvestments = async (): Promise<OnChainInvoice[]> => {
     if (!currentAccount || !packageId) return [];
 
-    console.group("🔍 Fetching Financed Invoices for Investor");
+    console.group("💼 Fetching My Investments");
     console.log("Investor Address:", currentAccount.address);
     console.log("Package ID:", packageId);
 
     try {
-      // Query all InvoiceCreated events
+      // Query for InvoiceFunded events where the investor is the current user
       const events = await suiClient.queryEvents({
         query: {
-          MoveEventType: `${packageId}::invoice_financing::InvoiceCreated`,
+          MoveEventType: `${packageId}::invoice_financing::InvoiceFunded`,
         },
-        limit: 50,
+        limit: 100,
         order: "descending",
       });
 
-      console.log("Total invoice events found:", events.data.length);
+      console.log("Total InvoiceFunded events:", events.data.length);
 
-      // Extract invoice IDs from events
-      const invoiceIds = events.data
+      // Filter events where investor matches current user
+      const myInvestmentEvents = events.data.filter((event) => {
+        const parsedJson = event.parsedJson as any;
+        return parsedJson?.investor === currentAccount.address;
+      });
+
+      console.log("My investment events:", myInvestmentEvents.length);
+
+      // Extract invoice IDs
+      const invoiceIds = myInvestmentEvents
         .map((event) => {
           const parsedJson = event.parsedJson as any;
           return parsedJson?.invoice_id;
         })
         .filter(Boolean);
 
-      // Fetch each invoice object and filter by financier
+      console.log("Invoice IDs:", invoiceIds);
+
+      // Fetch each invoice object
       const invoiceObjects = await Promise.all(
         invoiceIds.map(async (id) => {
           try {
@@ -373,8 +383,8 @@ export function useFinancedInvoices() {
         })
       );
 
-      // Parse and filter invoices where current user is the financier
-      const financedInvoices: OnChainInvoice[] = invoiceObjects
+      // Parse invoice data
+      const invoices: OnChainInvoice[] = invoiceObjects
         .filter(
           (obj): obj is NonNullable<typeof obj> =>
             obj !== null && obj.data?.content !== undefined
@@ -383,7 +393,7 @@ export function useFinancedInvoices() {
           const content = obj.data!.content as any;
           const fields = content.fields;
 
-          return {
+          const invoice: OnChainInvoice = {
             id: obj.data!.objectId,
             invoiceNumber: Buffer.from(fields.invoice_number).toString("utf-8"),
             issuer: fields.issuer,
@@ -395,29 +405,32 @@ export function useFinancedInvoices() {
             createdAt: parseInt(fields.created_at),
             status: parseInt(fields.status),
             financedBy: fields.financed_by,
-            financedAmount: fields.financed_amount || "0",
-            financedAmountInSui: formatSuiAmount(fields.financed_amount || "0"),
+            investorPaid: fields.investor_paid,
+            investorPaidInSui: formatSuiAmount(fields.investor_paid || "0"),
+            supplierReceived: fields.supplier_received,
+            supplierReceivedInSui: formatSuiAmount(fields.supplier_received || "0"),
+            originationFeeCollected: fields.origination_fee_collected,
+            originationFeeCollectedInSui: formatSuiAmount(fields.origination_fee_collected || "0"),
+            discountRateBps: fields.discount_rate_bps,
           };
-        })
-        .filter((invoice) => {
-          // Only include invoices financed by current user
-          return invoice.financedBy === currentAccount.address;
+
+          return invoice;
         });
 
-      console.log("Invoices financed by user:", financedInvoices.length);
+      console.log("My investments:", invoices.length);
       console.groupEnd();
 
-      return financedInvoices;
+      return invoices;
     } catch (error) {
-      console.error("Error fetching financed invoices:", error);
+      console.error("Error fetching my investments:", error);
       console.groupEnd();
       return [];
     }
   };
 
   return useQuery({
-    queryKey: ["financed-invoices", currentAccount?.address, packageId],
-    queryFn: fetchFinancedInvoices,
+    queryKey: ["my-investments", currentAccount?.address, packageId],
+    queryFn: fetchMyInvestments,
     enabled: !!currentAccount && !!packageId,
     refetchInterval: 10000,
   });

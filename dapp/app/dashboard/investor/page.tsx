@@ -10,143 +10,58 @@ import PortfolioDistribution from "@/components/PortfolioDistribution";
 import PerformanceMetrics from "@/components/PerformanceMetrics";
 import { Investment } from "@/components/InvestmentCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Wallet, AlertCircle, CheckCircle } from "lucide-react";
-import { useFinancedInvoices } from "@/hooks/useInvoices";
+import { useMyInvestments } from "@/hooks/useInvoices";
 import { OnChainInvoice, InvoiceStatus, formatDate } from "@/types/invoice";
+import { Loader2, AlertCircle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 
 const InvestorDashboard = () => {
-  const { currentAccount } = useWalletKit();
-  const { data: financedInvoices, isLoading, error } = useFinancedInvoices();
-  const [kycStatus, setKycStatus] = useState<'approved' | 'pending' | 'rejected' | 'loading'>('loading');
+  const { data: investments, isLoading, error } = useMyInvestments();
 
-  // Fetch KYC status when wallet connects
-  useEffect(() => {
-    const fetchKYCStatus = async () => {
-      if (!currentAccount?.address) {
-        setKycStatus('loading');
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/kyc/status/${currentAccount.address}`);
-        if (response.ok) {
-          const data = await response.json();
-          setKycStatus(data.status);
-        } else {
-          // Auto-submit KYC if not found (MVP behavior)
-          const submitResponse = await fetch('/api/kyc/submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address: currentAccount.address }),
-          });
-          if (submitResponse.ok) {
-            const data = await submitResponse.json();
-            setKycStatus(data.status);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching KYC status:', error);
-        setKycStatus('pending');
-      }
-    };
-
-    fetchKYCStatus();
-  }, [currentAccount?.address]);
-
-  // Convert blockchain invoices to Investment format
+  // Convert OnChainInvoice to Investment format
   const convertToInvestment = (invoice: OnChainInvoice): Investment => {
-    const isSettled = invoice.status === InvoiceStatus.REPAID;
-    const invested = invoice.financedAmountInSui;
-    const expectedReturn = invoice.amountInSui;
-    const returnAmount = expectedReturn - invested;
-    const returnRate = invested > 0 ? ((returnAmount / invested) * 100) : 0;
+    const investorPaid = invoice.investorPaidInSui || 0;
+    const invoiceAmount = invoice.amountInSui;
+    const discountRateBps = parseInt(invoice.discountRateBps || "0");
 
-    // Calculate days between financing and due date for annualized return
-    const now = Date.now();
-    const dueTimestamp = invoice.dueDate * 1000;
-    const daysToMaturity = Math.max(1, Math.ceil((dueTimestamp - now) / (1000 * 60 * 60 * 24)));
+    // Calculate expected return (simplified - doesn't include platform fees)
+    // In reality, this should be: invoiceAmount - takeRateFee - settlementFee
+    const expectedReturn = invoiceAmount * 0.998; // Approximate after 10% take-rate on discount + settlement fee
+
+    const returnRate = investorPaid > 0
+      ? ((expectedReturn - investorPaid) / investorPaid) * 100
+      : 0;
 
     return {
       id: invoice.id,
-      business: invoice.issuer.substring(0, 10) + "...",
+      business: invoice.issuer.slice(0, 6) + "..." + invoice.issuer.slice(-4), // Short address
       invoiceId: invoice.invoiceNumber,
-      invested: invested,
-      expectedReturn: isSettled ? undefined : expectedReturn,
-      actualReturn: isSettled ? expectedReturn : undefined,
-      returnRate: parseFloat(returnRate.toFixed(2)),
-      dueDate: isSettled ? undefined : formatDate(invoice.dueDate),
-      settledDate: isSettled ? formatDate(invoice.dueDate) : undefined,
-      rating: "A", // Mock rating for MVP
-      status: isSettled ? "settled" : "active",
+      invested: investorPaid,
+      expectedReturn: invoice.status === InvoiceStatus.FUNDED ? expectedReturn : undefined,
+      actualReturn: invoice.status === InvoiceStatus.REPAID ? expectedReturn : undefined,
+      returnRate,
+      dueDate: invoice.status === InvoiceStatus.FUNDED ? formatDate(invoice.dueDate) : undefined,
+      settledDate: invoice.status === InvoiceStatus.REPAID ? formatDate(invoice.dueDate) : undefined,
+      rating: "A", // TODO: Implement rating system
+      status: invoice.status === InvoiceStatus.FUNDED ? "active" : "settled",
     };
   };
 
-  // Split into active and settled investments
-  const { activeInvestments, settledInvestments } = useMemo(() => {
-    if (!financedInvoices) {
-      return { activeInvestments: [], settledInvestments: [] };
-    }
+  const activeInvestments: Investment[] = investments
+    ?.filter((inv) => inv.status === InvoiceStatus.FUNDED)
+    .map(convertToInvestment) || [];
 
-    const active: Investment[] = [];
-    const settled: Investment[] = [];
-
-    financedInvoices.forEach((invoice) => {
-      const investment = convertToInvestment(invoice);
-      if (investment.status === "active") {
-        active.push(investment);
-      } else {
-        settled.push(investment);
-      }
-    });
-
-    return { activeInvestments: active, settledInvestments: settled };
-  }, [financedInvoices]);
-
-  // Calculate portfolio statistics
-  const portfolioStats: PortfolioStats = useMemo(() => {
-    if (!financedInvoices || financedInvoices.length === 0) {
-      return {
-        totalInvested: "$0",
-        totalInvestments: 0,
-        totalReturns: "$0",
-        avgReturn: "0% average return",
-        activeValue: "$0",
-        pendingSettlements: 0,
-        successRate: "0%",
-        successDescription: "No investments yet",
-      };
-    }
-
-    const totalInvested = financedInvoices.reduce((sum, inv) => sum + inv.financedAmountInSui, 0);
-    const totalInvestments = financedInvoices.length;
-
-    const settledInvs = financedInvoices.filter((inv) => inv.status === InvoiceStatus.REPAID);
-    const totalReturns = settledInvs.reduce((sum, inv) => sum + (inv.amountInSui - inv.financedAmountInSui), 0);
-
-    const activeInvs = financedInvoices.filter((inv) => inv.status === InvoiceStatus.FUNDED);
-    const activeValue = activeInvs.reduce((sum, inv) => sum + inv.financedAmountInSui, 0);
-
-    const avgReturnRate = totalInvested > 0 ? (totalReturns / totalInvested) * 100 : 0;
-    const successRate = totalInvestments > 0 ? (settledInvs.length / totalInvestments) * 100 : 0;
-
-    return {
-      totalInvested: `${totalInvested.toFixed(2)} SUI`,
-      totalInvestments: totalInvestments,
-      totalReturns: `${totalReturns.toFixed(2)} SUI`,
-      avgReturn: `${avgReturnRate.toFixed(2)}% average return`,
-      activeValue: `${activeValue.toFixed(2)} SUI`,
-      pendingSettlements: activeInvs.length,
-      successRate: `${successRate.toFixed(0)}%`,
-      successDescription: settledInvs.length === totalInvestments ? "All invoices settled" : `${settledInvs.length} of ${totalInvestments} settled`,
-    };
-  }, [financedInvoices]);
+  const settledInvestments: Investment[] = investments
+    ?.filter((inv) => inv.status === InvoiceStatus.REPAID)
+    .map(convertToInvestment) || [];
 
   const handleInvestmentClick = (investment: Investment) => {
     console.log("Viewing investment:", investment);
-    // TODO: Implement investment detail view
+    const network = process.env.NEXT_PUBLIC_NETWORK || "testnet";
+    const url = network === "mainnet"
+      ? `https://suivision.xyz/object/${investment.id}`
+      : `https://testnet.suivision.xyz/object/${investment.id}`;
+    window.open(url, '_blank');
   };
 
   // Show wallet connection prompt if no wallet
@@ -206,54 +121,28 @@ const InvestorDashboard = () => {
             </Card>
           )}
 
-          {kycStatus === 'pending' && (
-            <Card className="mb-6 border-yellow-500/50 bg-yellow-500/10">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-yellow-500" />
-                  <div>
-                    <p className="font-semibold text-yellow-700 dark:text-yellow-400">
-                      KYC Pending
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Your verification is being processed
-                    </p>
-                  </div>
-                  <Badge className="ml-auto" variant="outline">Pending</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <PortfolioStatsCards stats={portfolioStats} />
-
-          {/* Loading State */}
-          {isLoading && (
+          {isLoading ? (
             <Card>
-              <CardContent className="py-12">
-                <div className="flex flex-col items-center justify-center gap-2">
-                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-                  <p className="text-muted-foreground">Loading your investments from blockchain...</p>
+              <CardContent className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+                  <p className="text-muted-foreground">Loading your investments...</p>
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {/* Error State */}
-          {error && (
-            <Card className="border-red-500/50">
-              <CardContent className="py-12">
-                <div className="flex flex-col items-center justify-center gap-2 text-red-500">
-                  <AlertCircle className="h-8 w-8" />
-                  <p className="font-semibold">Failed to load investments</p>
-                  <p className="text-sm text-muted-foreground">{error.message}</p>
+          ) : error ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <AlertCircle className="h-8 w-8 mx-auto mb-4 text-destructive" />
+                  <p className="text-destructive font-semibold mb-2">Failed to load investments</p>
+                  <p className="text-sm text-muted-foreground">
+                    {error instanceof Error ? error.message : "Please try again later"}
+                  </p>
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {/* Investments Tabs */}
-          {!isLoading && !error && (
+          ) : (
             <Tabs defaultValue="active" className="space-y-6">
               <TabsList>
                 <TabsTrigger value="active">
@@ -266,54 +155,19 @@ const InvestorDashboard = () => {
               </TabsList>
 
               <TabsContent value="active">
-                {activeInvestments.length > 0 ? (
-                  <InvestmentList
-                    investments={activeInvestments}
-                    emptyMessage="No active investments found"
-                    onInvestmentClick={handleInvestmentClick}
-                  />
-                ) : (
-                  <Card>
-                    <CardContent className="py-12 text-center">
-                      <div className="flex flex-col items-center gap-4">
-                        <Wallet className="h-12 w-12 text-muted-foreground" />
-                        <div>
-                          <p className="font-semibold text-lg">No Active Investments</p>
-                          <p className="text-sm text-muted-foreground">
-                            Visit the marketplace to start investing in invoices
-                          </p>
-                        </div>
-                        <Button onClick={() => window.location.href = '/marketplace'}>
-                          Browse Marketplace
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                <InvestmentList
+                  investments={activeInvestments}
+                  emptyMessage="No active investments found. Visit the marketplace to finance invoices!"
+                  onInvestmentClick={handleInvestmentClick}
+                />
               </TabsContent>
 
               <TabsContent value="settled">
-                {settledInvestments.length > 0 ? (
-                  <InvestmentList
-                    investments={settledInvestments}
-                    emptyMessage="No settled investments found"
-                    onInvestmentClick={handleInvestmentClick}
-                  />
-                ) : (
-                  <Card>
-                    <CardContent className="py-12 text-center">
-                      <div className="flex flex-col items-center gap-4">
-                        <CheckCircle className="h-12 w-12 text-muted-foreground" />
-                        <div>
-                          <p className="font-semibold text-lg">No Settled Investments</p>
-                          <p className="text-sm text-muted-foreground">
-                            Your completed investments will appear here
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                <InvestmentList
+                  investments={settledInvestments}
+                  emptyMessage="No settled investments yet."
+                  onInvestmentClick={handleInvestmentClick}
+                />
               </TabsContent>
 
               <TabsContent value="analytics">
