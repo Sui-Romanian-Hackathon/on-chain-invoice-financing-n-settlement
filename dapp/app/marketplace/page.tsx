@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Navigation from "@/components/Navigation";
 import { DebugPanel } from "@/components/DebugPanel";
-import { useInvoices } from "@/hooks/useInvoices";
+import { useSharedInvoices } from "@/hooks/useSharedInvoices";
 import { BlockchainInvoiceCard } from "@/components/BlockchainInvoiceCard";
 import { FinanceInvoiceModal } from "@/components/FinanceInvoiceModal";
 import { OnChainInvoice, InvoiceFilters, InvoiceStatus } from "@/types/invoice";
@@ -15,7 +15,7 @@ import { Loader2, TrendingUp, FileText, DollarSign, RefreshCw, AlertCircle } fro
 
 const Marketplace = () => {
   const [filters, setFilters] = useState<InvoiceFilters>({
-    status: 'pending', // Show only available invoices by default
+    status: 'all', // Show all invoices by default
     sortBy: 'createdAt',
     sortOrder: 'desc',
   });
@@ -23,7 +23,7 @@ const Marketplace = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<OnChainInvoice | null>(null);
   const [financeModalOpen, setFinanceModalOpen] = useState(false);
 
-  const { data: invoices, isLoading, error, refetch } = useInvoices(filters);
+  const { data: invoices, isLoading, error, refetch } = useSharedInvoices(filters);
 
   const handleFilterChange = (key: keyof InvoiceFilters, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -52,7 +52,7 @@ const Marketplace = () => {
   // Calculate stats
   const totalInvoices = invoices?.length || 0;
   const totalValue = invoices?.reduce((sum, inv) => sum + inv.amountInSui, 0) || 0;
-  const availableInvoices = invoices?.filter(inv => inv.status === InvoiceStatus.PENDING).length || 0;
+  const availableInvoices = invoices?.filter(inv => inv.status === InvoiceStatus.READY).length || 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -127,9 +127,10 @@ const Marketplace = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="pending">Available</SelectItem>
+                      <SelectItem value="created">Created</SelectItem>
+                      <SelectItem value="ready">Available</SelectItem>
                       <SelectItem value="funded">Funded</SelectItem>
-                      <SelectItem value="repaid">Repaid</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -222,11 +223,11 @@ const Marketplace = () => {
                       <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <h3 className="text-lg font-semibold mb-2">No Invoices Found</h3>
                       <p className="text-muted-foreground mb-4">
-                        {filters.status === 'pending' 
+                        {filters.status === 'ready' 
                           ? "No invoices available for financing at the moment."
                           : "Try adjusting your filters to see more results."}
                       </p>
-                      <Button onClick={() => setFilters({ status: 'all', sortBy: 'createdAt', sortOrder: 'desc' })}>
+                      <Button onClick={() => setFilters({ status: 'ready', sortBy: 'createdAt', sortOrder: 'desc' })}>
                         Reset Filters
                       </Button>
                     </div>
