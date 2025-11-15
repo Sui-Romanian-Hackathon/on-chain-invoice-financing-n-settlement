@@ -9,7 +9,7 @@ import { ChevronDown, ChevronUp, Copy, Check, ExternalLink, AlertCircle, CheckCi
 
 export function DebugPanel() {
   const { currentAccount, isConnected } = useWalletKit();
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [suiBalance, setSuiBalance] = useState<string | null>(null);
 
