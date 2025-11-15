@@ -47,8 +47,7 @@ function setup_active_address() {
     exit 1
   fi
   echo "Setting ACTIVE_ADDRESS to $ACTIVE_ADDRESS in .env file"
-  sed -i '' -e "s/^ACTIVE_ADDRESS=.*/ACTIVE_ADDRESS=$ACTIVE_ADDRESS/" "$ENV_FILE"
-  sed -i '' -e "s/^ACTIVE_ADDRESS=.*/ACTIVE_ADDRESS=$ACTIVE_ADDRESS/" "$ENV_FILE"
+  sed -i "s/^ACTIVE_ADDRESS=.*/ACTIVE_ADDRESS=$ACTIVE_ADDRESS/" "$ENV_FILE"
   echo "ACTIVE_ADDRESS set to $ACTIVE_ADDRESS"
 }
 
@@ -79,7 +78,7 @@ function install() {
 
 function build_contract() {
   echo "Building the Move contract..."
-  $SUI_BIN move build --path ./contract/$SUI_MODULE_NAME
+  $SUI_BIN move build --path ./contract/$MODULE_NAME
   if [ $? -ne 0 ]; then
     echo "Error: Failed to build the Move contract."
     exit 1
@@ -89,7 +88,7 @@ function build_contract() {
 
 function test_contract() {
   echo "Running tests for the Move contract..."
-  $SUI_BIN move test --path ./contract/$SUI_MODULE_NAME
+  $SUI_BIN move test --path ./contract/$MODULE_NAME
   if [ $? -ne 0 ]; then
     echo "Error: Tests failed."
     exit 1
@@ -99,7 +98,7 @@ function test_contract() {
 
 function publish_contract() {
   echo "Publishing contract..."
-  local OUTPUT=$($SUI_BIN client publish --gas-budget $GAS_BUDGET ./contract/$SUI_MODULE_NAME 2>&1)
+  local OUTPUT=$($SUI_BIN client publish --gas-budget $GAS_BUDGET ./contract/$MODULE_NAME 2>&1)
   echo "$OUTPUT"
   
   local PACKAGE_ID=$(echo "$OUTPUT" | grep -oE 'PackageID: 0x[a-f0-9]+' | awk '{print $2}')
@@ -112,7 +111,7 @@ function publish_contract() {
     echo ""
     echo "Add this to your .env file:"
     echo "PACKAGE_ID=$PACKAGE_ID"
-    sed -i '' -e "s/^PACKAGE_ID=.*/PACKAGE_ID=$PACKAGE_ID/" "$ENV_FILE"
+    sed -i "s/^PACKAGE_ID=.*/PACKAGE_ID=$PACKAGE_ID/" "$ENV_FILE"
   else
     echo " [ ERROR ] Failed to extract Package ID from output"
     exit 1
@@ -120,7 +119,7 @@ function publish_contract() {
 
   if [ -n "$UPGRADE_CAP_ID" ]; then
     echo " [ SUCCESS ] UpgradeCap object ID: $UPGRADE_CAP_ID"
-    sed -i '' -e "s/^UPGRADE_CAP_ID=.*/UPGRADE_CAP_ID=$UPGRADE_CAP_ID/" "$ENV_FILE"
+    sed -i "s/^UPGRADE_CAP_ID=.*/UPGRADE_CAP_ID=$UPGRADE_CAP_ID/" "$ENV_FILE"
   fi
 }
 
@@ -142,7 +141,7 @@ function upgrade_contract() {
   
   $SUI_BIN client upgrade --gas-budget ${GAS_BUDGET} \
     --upgrade-capability ${UPGRADE_CAP_ID} \
-    "./contract/$SUI_MODULE_NAME"
+    "./contract/$MODULE_NAME"
   
   echo "$OUTPUT"
   
