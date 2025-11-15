@@ -25,3 +25,7 @@ clean:
 upgrade_contract:
 	@echo "Upgrading Move contract on Sui blockchain..."
 	bash ./scripts.bash upgrade_contract
+
+start_dev_server:
+	@echo "Starting Sui devnet server..."
+	bash ./scripts.bash start_dev_server
