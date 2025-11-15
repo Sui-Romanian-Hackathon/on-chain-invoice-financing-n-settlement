@@ -60,7 +60,7 @@ export function useTreasuryWithdraw() {
       });
 
       const result = await signAndExecuteTransactionBlock({
-        transactionBlock: txb,
+        transactionBlock: txb as any,
         options: {
           showEffects: true,
           showObjectChanges: true,

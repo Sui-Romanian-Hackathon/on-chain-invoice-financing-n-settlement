@@ -17,6 +17,28 @@ export interface CreateInvoiceParams {
   escrowBps?: number; // Escrow in basis points (default 1000 = 10%)
 }
 
+export interface FinanceInvoiceParams {
+  invoiceId: string;
+  invoiceAmount: number; // in SUI
+  discountRate: number; // percentage (e.g., 2.0 for 2%)
+}
+
+export interface FinanceCalculation {
+  invoiceAmount: number;
+  discountRate: number;
+  discountAmount: number;
+  investorPays: number;
+  supplierReceives: number;
+  originationFee: number;
+  originationFeeRate: number;
+  expectedInvestorReceives: number;
+  expectedTakeRateFee: number;
+  expectedNetProfit: number;
+  expectedAPY: number;
+  settlementFee: number;
+  takeRatePercent: number;
+}
+
 export function useInvoiceContract() {
   const { 
     currentAccount, 
@@ -299,7 +321,7 @@ export function useInvoiceContract() {
       console.log("📤 Sending transaction to blockchain...");
 
       const result = await signAndExecuteTransactionBlock({
-        transactionBlock: txb,
+        transactionBlock: txb as any,
         options: {
           showEffects: true,
           showObjectChanges: true,
@@ -316,10 +338,18 @@ export function useInvoiceContract() {
       const invoiceObject = createdObjects.find(
         (obj: any) => obj.owner === 'Shared' || obj.owner?.Shared
       );
-      const invoiceId = invoiceObject?.reference?.objectId || 
-                       result.objectChanges?.find(
-                         (change: any) => change.type === 'created' && change.objectType?.includes('Invoice')
-                       )?.objectId;
+      
+      let invoiceId = invoiceObject?.reference?.objectId;
+      
+      // If not found in created objects, try objectChanges
+      if (!invoiceId && result.objectChanges) {
+        const createdInvoice = result.objectChanges.find(
+          (change: any) => change.type === 'created' && change.objectType?.includes('Invoice')
+        );
+        if (createdInvoice && 'objectId' in createdInvoice) {
+          invoiceId = (createdInvoice as any).objectId;
+        }
+      }
 
       console.log("📦 Created Objects:", createdObjects);
       console.log("🆔 Invoice Object ID:", invoiceId);
@@ -383,8 +413,214 @@ export function useInvoiceContract() {
     }
   };
 
+  /**
+   * Calculate financing fees and returns
+   */
+  const calculateFinancing = (
+    invoiceAmount: number,
+    discountRate: number,
+    daysUntilDue: number
+  ): FinanceCalculation => {
+    // Origination fee: 1% of invoice face value (charged upfront)
+    const originationFeeRate = 1.0;
+    const originationFee = invoiceAmount * (originationFeeRate / 100);
+
+    // Discount amount based on user's chosen rate
+    const discountAmount = invoiceAmount * (discountRate / 100);
+
+    // Investor pays: face value - discount - origination fee
+    const investorPays = invoiceAmount - discountAmount - originationFee;
+
+    // Supplier receives: what investor pays (immediately)
+    const supplierReceives = investorPays;
+
+    // At settlement: platform takes 30% of the discount as revenue
+    const takeRatePercent = 30;
+    const expectedTakeRateFee = discountAmount * (takeRatePercent / 100);
+
+    // Settlement fee: flat 0.1% of face value
+    const settlementFee = invoiceAmount * 0.001;
+
+    // Investor receives at settlement: face value - take rate fee - settlement fee
+    const expectedInvestorReceives = invoiceAmount - expectedTakeRateFee - settlementFee;
+
+    // Net profit for investor
+    const expectedNetProfit = expectedInvestorReceives - investorPays;
+
+    // Calculate APY
+    const daysInYear = 365;
+    const returnRate = (expectedNetProfit / investorPays) * 100;
+    const expectedAPY = daysUntilDue > 0 ? (returnRate * daysInYear) / daysUntilDue : 0;
+
+    return {
+      invoiceAmount,
+      discountRate,
+      discountAmount,
+      investorPays,
+      supplierReceives,
+      originationFee,
+      originationFeeRate,
+      expectedInvestorReceives,
+      expectedTakeRateFee,
+      expectedNetProfit,
+      expectedAPY,
+      settlementFee,
+      takeRatePercent,
+    };
+  };
+
+  /**
+   * Finance an invoice
+   */
+  const financeInvoice = async (params: FinanceInvoiceParams): Promise<{ success: boolean; digest?: string } | null> => {
+    console.group("💰 Finance Invoice");
+    console.log("Parameters:", params);
+
+    if (!currentAccount) {
+      console.error("❌ Wallet not connected");
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet first.",
+        variant: "destructive",
+      });
+      console.groupEnd();
+      return { success: false };
+    }
+
+    if (!packageId) {
+      console.error("❌ Package ID not configured");
+      toast({
+        title: "Configuration Error",
+        description: "Package ID not configured.",
+        variant: "destructive",
+      });
+      console.groupEnd();
+      return { success: false };
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { invoiceId, invoiceAmount, discountRate } = params;
+
+      // Calculate payment amount (face value - discount)
+      const discountAmount = invoiceAmount * (discountRate / 100);
+      const paymentAmount = invoiceAmount - discountAmount;
+
+      // Convert to MIST
+      const MIST_PER_SUI = 1_000_000_000;
+      const paymentInMist = Math.floor(paymentAmount * MIST_PER_SUI);
+
+      console.log("💵 Financing calculation:");
+      console.log(`  - Invoice Amount: ${invoiceAmount} SUI`);
+      console.log(`  - Discount Rate: ${discountRate}%`);
+      console.log(`  - Discount Amount: ${discountAmount} SUI`);
+      console.log(`  - Payment Amount: ${paymentAmount} SUI (${paymentInMist} MIST)`);
+
+      // Query for the buyer escrow object associated with this invoice
+      console.log("🔍 Querying for BuyerEscrow object...");
+      
+      const escrowType = `${packageId}::escrow::BuyerEscrow`;
+      const escrowObjects = await suiClient.getOwnedObjects({
+        owner: currentAccount.address,
+        filter: {
+          StructType: escrowType,
+        },
+        options: {
+          showContent: true,
+        },
+      });
+
+      console.log(`Found ${escrowObjects.data.length} escrow objects`);
+
+      // Find the escrow for this specific invoice
+      let buyerEscrowId: string | null = null;
+      
+      for (const obj of escrowObjects.data) {
+        if (obj.data?.content && 'fields' in obj.data.content) {
+          const fields = obj.data.content.fields as any;
+          if (fields.invoice_id === invoiceId) {
+            buyerEscrowId = obj.data.objectId;
+            console.log("✅ Found matching escrow:", buyerEscrowId);
+            break;
+          }
+        }
+      }
+
+      if (!buyerEscrowId) {
+        console.error("❌ BuyerEscrow not found for this invoice");
+        toast({
+          title: "Escrow Not Found",
+          description: "The buyer escrow for this invoice was not found. The buyer may not have paid yet.",
+          variant: "destructive",
+        });
+        console.groupEnd();
+        setIsLoading(false);
+        return { success: false };
+      }
+
+      console.log("📤 Building fund_invoice transaction...");
+      
+      const txb = new TransactionBlock();
+
+      // Split coins to get exact payment amount
+      const [paymentCoin] = txb.splitCoins(txb.gas, [txb.pure(paymentInMist)]);
+
+      // Call fund_invoice
+      txb.moveCall({
+        target: `${packageId}::invoice_financing::fund_invoice`,
+        arguments: [
+          txb.object(invoiceId),
+          txb.object(buyerEscrowId),
+          paymentCoin,
+        ],
+      });
+
+      console.log("📤 Sending transaction...");
+
+      const result = await signAndExecuteTransactionBlock({
+        transactionBlock: txb as any,
+        options: {
+          showEffects: true,
+          showObjectChanges: true,
+        },
+      });
+
+      console.log("✅ Transaction result:", result);
+
+      if (result.effects?.status?.status === "success") {
+        toast({
+          title: "Invoice Financed Successfully",
+          description: `You have successfully financed the invoice for ${paymentAmount.toFixed(4)} SUI`,
+        });
+
+        console.groupEnd();
+        setIsLoading(false);
+        return {
+          success: true,
+          digest: result.digest,
+        };
+      } else {
+        throw new Error(result.effects?.status?.error || "Transaction failed");
+      }
+
+    } catch (error: any) {
+      console.error("❌ Error financing invoice:", error);
+      toast({
+        title: "Transaction Failed",
+        description: error.message || "Failed to finance invoice.",
+        variant: "destructive",
+      });
+      console.groupEnd();
+      setIsLoading(false);
+      return { success: false };
+    }
+  };
+
   return {
     createInvoice,
+    financeInvoice,
+    calculateFinancing,
     isLoading,
     isConnected: !!currentAccount,
     address: currentAccount?.address,

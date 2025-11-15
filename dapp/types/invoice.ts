@@ -20,6 +20,13 @@ export interface OnChainInvoice {
   originationFeeCollected?: string; // Origination fee collected (in MIST)
   originationFeeCollectedInSui?: number; // Origination fee collected (in SUI)
   discountRateBps?: string; // Discount rate in basis points
+  // Basis points fields
+  escrowBps?: number; // Escrow basis points
+  discountBps?: number; // Discount basis points
+  feeBps?: number; // Fee basis points
+  // Additional metadata
+  companiesInfo?: string; // Companies information
+  supplier?: string; // Supplier address
 }
 
 export interface InvoiceFilters {

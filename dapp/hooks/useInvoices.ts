@@ -389,7 +389,7 @@ export function useMyInvoices() {
           }
 
           return {
-            id: obj.data!.objectId,
+            id: obj!.data!.objectId,
             invoiceNumber: companiesInfo.invoiceNumber || "N/A",
             issuer: fields.supplier || "",
             buyer: fields.buyer || "",
@@ -413,15 +413,14 @@ export function useMyInvoices() {
             companiesInfo: companiesInfoStr,
             supplier: fields.supplier || "",
           };
-
-          return invoice;
         });
 
       console.log("Parsed invoices:", invoices.length);
       console.log("Status breakdown:", {
-        pending: invoices.filter(i => i.status === InvoiceStatus.PENDING).length,
-        funded: invoices.filter(i => i.status === InvoiceStatus.FUNDED).length,
-        repaid: invoices.filter(i => i.status === InvoiceStatus.REPAID).length,
+        created: invoices.filter(i => i.status === InvoiceStatus.CREATED).length,
+        ready: invoices.filter(i => i.status === InvoiceStatus.READY).length,
+        financed: invoices.filter(i => i.status === InvoiceStatus.FINANCED).length,
+        paid: invoices.filter(i => i.status === InvoiceStatus.PAID).length,
         defaulted: invoices.filter(i => i.status === InvoiceStatus.DEFAULTED).length,
       });
       console.groupEnd();
@@ -694,9 +693,10 @@ export function useMyPayableInvoices() {
 
       console.log("My payable invoices:", invoices.length);
       console.log("Status breakdown:", {
-        pending: invoices.filter(i => i.status === InvoiceStatus.PENDING).length,
-        funded: invoices.filter(i => i.status === InvoiceStatus.FUNDED).length,
-        repaid: invoices.filter(i => i.status === InvoiceStatus.REPAID).length,
+        created: invoices.filter(i => i.status === InvoiceStatus.CREATED).length,
+        ready: invoices.filter(i => i.status === InvoiceStatus.READY).length,
+        financed: invoices.filter(i => i.status === InvoiceStatus.FINANCED).length,
+        paid: invoices.filter(i => i.status === InvoiceStatus.PAID).length,
       });
       console.groupEnd();
 

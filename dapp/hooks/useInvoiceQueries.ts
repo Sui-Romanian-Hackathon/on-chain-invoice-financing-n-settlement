@@ -164,6 +164,7 @@ export function useInvoiceQueries() {
           supplier: fields.supplier,
           amount: BigInt(fields.amount),
           due_date: Number(fields.due_date),
+          companies_info: fields.companies_info || [],
           status: Number(fields.status),
           escrow_bps: Number(fields.escrow_bps),
           discount_bps: Number(fields.discount_bps),

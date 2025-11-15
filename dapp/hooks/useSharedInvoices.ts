@@ -159,6 +159,7 @@ export function useSharedInvoices(filters?: InvoiceFilters) {
             escrowBps: fields.escrow_bps !== undefined ? parseInt(fields.escrow_bps) : 0,
             discountBps: fields.discount_bps !== undefined ? parseInt(fields.discount_bps) : 0,
             feeBps: fields.fee_bps !== undefined ? parseInt(fields.fee_bps) : 0,
+            createdAt: Date.now(), // TODO: Add created_at field to Invoice struct
             // Parse from companies_info
             invoiceNumber: companiesInfo.invoiceNumber || "N/A",
             description: companiesInfo.description || "",

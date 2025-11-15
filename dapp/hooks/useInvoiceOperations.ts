@@ -126,9 +126,14 @@ export function useInvoiceOperations() {
       console.log('✅ Supplier registered:', result.digest);
 
       // Extract SupplierCap ID
-      const supplierCapId = result.objectChanges?.find(
+      const supplierCapChange = result.objectChanges?.find(
         (change: any) => change.type === 'created' && change.objectType?.includes('SupplierCap')
-      )?.objectId as string | undefined;
+      );
+      
+      let supplierCapId: string | undefined;
+      if (supplierCapChange && 'objectId' in supplierCapChange) {
+        supplierCapId = (supplierCapChange as any).objectId;
+      }
 
       if (supplierCapId) {
         localStorage.setItem('supplier_cap_id', supplierCapId);
@@ -258,16 +263,26 @@ export function useInvoiceOperations() {
       console.log('✅ Invoice issued:', result.digest);
 
       // Extract invoice ID and escrow ID
-      const invoiceId = result.objectChanges?.find(
+      const invoiceChange = result.objectChanges?.find(
         (change: any) =>
           change.type === 'created' &&
           change.objectType?.includes('Invoice') &&
           !change.objectType?.includes('Factory')
-      )?.objectId as string | undefined;
+      );
+      
+      let invoiceId: string | undefined;
+      if (invoiceChange && 'objectId' in invoiceChange) {
+        invoiceId = (invoiceChange as any).objectId;
+      }
 
-      const escrowId = result.objectChanges?.find(
+      const escrowChange = result.objectChanges?.find(
         (change: any) => change.type === 'created' && change.objectType?.includes('BuyerEscrow')
-      )?.objectId as string | undefined;
+      );
+      
+      let escrowId: string | undefined;
+      if (escrowChange && 'objectId' in escrowChange) {
+        escrowId = (escrowChange as any).objectId;
+      }
 
       console.log('📦 Invoice ID:', invoiceId);
       console.log('📦 Escrow ID:', escrowId);
