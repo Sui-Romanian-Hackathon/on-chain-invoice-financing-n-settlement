@@ -12,8 +12,8 @@ public struct Invoice has key, store {
     due_date: u64,                // UNIX timestamp
     companies_info: vector<u8>,   // Encoded metadata (JSON, IPFS, ABI)
 
-    status: u8,                   // 0=Created,1=Ready,2=Financed,3=Paid
-
+    status: u8,                   // 0=Created,1=Ready,2=Financed,3=Paid,4=Defaulted
+    
     escrow_bps: u64,              // Buyer's collateral amount of the total (in BPS)
 
     discount_bps: u64,            // Discount in BPS (e.g., 200 = 2%)
@@ -25,6 +25,8 @@ public struct Invoice has key, store {
     supplier_received: Option<u64>, // Amount supplier received
     origination_fee: Option<u64>, // Origination fee collected
 }
+
+// GETTERS
 
 public fun buyer(invoice: &Invoice): address {
     invoice.buyer
@@ -38,45 +40,19 @@ public fun amount(invoice: &Invoice): u64 {
     invoice.amount
 }
 
-public fun status(invoice: &Invoice): u8 {
-    invoice.status
-}
-
 public fun due_date(invoice: &Invoice): u64 {
     invoice.due_date
-}
-
-public fun companies_info(invoice: &Invoice): vector<u8> {
-    invoice.companies_info
 }
 
 public fun discount_bps(invoice: &Invoice): u64 {
     invoice.discount_bps
 }
 
-public fun fee_bps(invoice: &Invoice): u64 {
-    invoice.fee_bps
+public fun status(invoice: &Invoice): u8 {
+    invoice.status
 }
 
-public fun escrow_bps(invoice: &Invoice): u64 {
-    invoice.escrow_bps
-}
-
-public fun investor(invoice: &Invoice): Option<address> {
-    invoice.investor
-}
-
-public fun investor_paid(invoice: &Invoice): Option<u64> {
-    invoice.investor_paid
-}
-
-public fun supplier_received(invoice: &Invoice): Option<u64> {
-    invoice.supplier_received
-}
-
-public fun origination_fee(invoice: &Invoice): Option<u64> {
-    invoice.origination_fee
-}
+// SETTERS
 
 public(package) fun set_status(invoice: &mut Invoice, new_status: u8) {
     invoice.status = new_status
