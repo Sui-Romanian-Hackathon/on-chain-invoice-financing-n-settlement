@@ -313,3 +313,112 @@ export function useMyInvoices() {
     refetchInterval: 10000,
   });
 }
+
+// Hook to fetch invoices financed by current user (investor/financier)
+export function useFinancedInvoices() {
+  const { currentAccount } = useWalletKit();
+  const packageId = process.env.NEXT_PUBLIC_PACKAGE_ID;
+  const network = process.env.NEXT_PUBLIC_NETWORK || "testnet";
+
+  const suiClient = new SuiClient({
+    url:
+      network === "mainnet"
+        ? "https://fullnode.mainnet.sui.io:443"
+        : "https://fullnode.testnet.sui.io:443",
+  });
+
+  const fetchFinancedInvoices = async (): Promise<OnChainInvoice[]> => {
+    if (!currentAccount || !packageId) return [];
+
+    console.group("🔍 Fetching Financed Invoices for Investor");
+    console.log("Investor Address:", currentAccount.address);
+    console.log("Package ID:", packageId);
+
+    try {
+      // Query all InvoiceCreated events
+      const events = await suiClient.queryEvents({
+        query: {
+          MoveEventType: `${packageId}::invoice_financing::InvoiceCreated`,
+        },
+        limit: 50,
+        order: "descending",
+      });
+
+      console.log("Total invoice events found:", events.data.length);
+
+      // Extract invoice IDs from events
+      const invoiceIds = events.data
+        .map((event) => {
+          const parsedJson = event.parsedJson as any;
+          return parsedJson?.invoice_id;
+        })
+        .filter(Boolean);
+
+      // Fetch each invoice object and filter by financier
+      const invoiceObjects = await Promise.all(
+        invoiceIds.map(async (id) => {
+          try {
+            const obj = await suiClient.getObject({
+              id: id,
+              options: {
+                showContent: true,
+                showOwner: true,
+              },
+            });
+            return obj;
+          } catch (error) {
+            console.error(`Error fetching invoice ${id}:`, error);
+            return null;
+          }
+        })
+      );
+
+      // Parse and filter invoices where current user is the financier
+      const financedInvoices: OnChainInvoice[] = invoiceObjects
+        .filter(
+          (obj): obj is NonNullable<typeof obj> =>
+            obj !== null && obj.data?.content !== undefined
+        )
+        .map((obj) => {
+          const content = obj.data!.content as any;
+          const fields = content.fields;
+
+          return {
+            id: obj.data!.objectId,
+            invoiceNumber: Buffer.from(fields.invoice_number).toString("utf-8"),
+            issuer: fields.issuer,
+            buyer: Buffer.from(fields.buyer).toString("utf-8"),
+            amount: fields.amount,
+            amountInSui: formatSuiAmount(fields.amount),
+            dueDate: parseInt(fields.due_date),
+            description: Buffer.from(fields.description).toString("utf-8"),
+            createdAt: parseInt(fields.created_at),
+            status: parseInt(fields.status),
+            financedBy: fields.financed_by,
+            financedAmount: fields.financed_amount || "0",
+            financedAmountInSui: formatSuiAmount(fields.financed_amount || "0"),
+          };
+        })
+        .filter((invoice) => {
+          // Only include invoices financed by current user
+          return invoice.financedBy === currentAccount.address;
+        });
+
+      console.log("Invoices financed by user:", financedInvoices.length);
+      console.groupEnd();
+
+      return financedInvoices;
+    } catch (error) {
+      console.error("Error fetching financed invoices:", error);
+      console.groupEnd();
+      return [];
+    }
+  };
+
+  return useQuery({
+    queryKey: ["financed-invoices", currentAccount?.address, packageId],
+    queryFn: fetchFinancedInvoices,
+    enabled: !!currentAccount && !!packageId,
+    refetchInterval: 10000,
+  });
+}
