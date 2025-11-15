@@ -47,7 +47,11 @@ function setup_active_address() {
     exit 1
   fi
   echo "Setting ACTIVE_ADDRESS to $ACTIVE_ADDRESS in .env file"
-  sed -i "s/^ACTIVE_ADDRESS=.*/ACTIVE_ADDRESS=$ACTIVE_ADDRESS/" "$ENV_FILE"
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s/^ACTIVE_ADDRESS=.*/ACTIVE_ADDRESS=$ACTIVE_ADDRESS/" "$ENV_FILE"
+  elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    sed -i "s/^ACTIVE_ADDRESS=.*/ACTIVE_ADDRESS=$ACTIVE_ADDRESS/" "$ENV_FILE"
+  fi
   echo "ACTIVE_ADDRESS set to $ACTIVE_ADDRESS"
 }
 
@@ -111,7 +115,11 @@ function publish_contract() {
     echo ""
     echo "Add this to your .env file:"
     echo "PACKAGE_ID=$PACKAGE_ID"
-    sed -i "s/^PACKAGE_ID=.*/PACKAGE_ID=$PACKAGE_ID/" "$ENV_FILE"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s/^PACKAGE_ID=.*/PACKAGE_ID=$PACKAGE_ID/" "$ENV_FILE"
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+      sed -i "s/^PACKAGE_ID=.*/PACKAGE_ID=$PACKAGE_ID/" "$ENV_FILE"
+    fi
   else
     echo " [ ERROR ] Failed to extract Package ID from output"
     exit 1
@@ -119,7 +127,12 @@ function publish_contract() {
 
   if [ -n "$UPGRADE_CAP_ID" ]; then
     echo " [ SUCCESS ] UpgradeCap object ID: $UPGRADE_CAP_ID"
-    sed -i "s/^UPGRADE_CAP_ID=.*/UPGRADE_CAP_ID=$UPGRADE_CAP_ID/" "$ENV_FILE"
+    # if macos
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s/^UPGRADE_CAP_ID=.*/UPGRADE_CAP_ID=$UPGRADE_CAP_ID/" "$ENV_FILE"
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+      sed -i "s/^UPGRADE_CAP_ID=.*/UPGRADE_CAP_ID=$UPGRADE_CAP_ID/" "$ENV_FILE"
+    fi
   fi
 }
 
