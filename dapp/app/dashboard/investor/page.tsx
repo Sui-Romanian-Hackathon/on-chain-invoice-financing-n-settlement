@@ -12,11 +12,49 @@ import { Investment } from "@/components/InvestmentCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMyInvestments } from "@/hooks/useInvoices";
 import { OnChainInvoice, InvoiceStatus, formatDate } from "@/types/invoice";
-import { Loader2, AlertCircle } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Loader2, AlertCircle, Wallet, CheckCircle } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 const InvestorDashboard = () => {
+  const { currentAccount } = useWalletKit();
   const { data: investments, isLoading, error } = useMyInvestments();
+  const [kycStatus, setKycStatus] = useState<'approved' | 'pending' | 'rejected' | 'loading'>('loading');
+
+  // Fetch KYC status when wallet connects
+  useEffect(() => {
+    const fetchKYCStatus = async () => {
+      if (!currentAccount?.address) {
+        setKycStatus('loading');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/kyc/status/${currentAccount.address}`);
+        if (response.ok) {
+          const data = await response.json();
+          setKycStatus(data.status);
+        } else {
+          // Auto-submit KYC if not found (MVP behavior)
+          const submitResponse = await fetch('/api/kyc/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: currentAccount.address }),
+          });
+          if (submitResponse.ok) {
+            const data = await submitResponse.json();
+            setKycStatus(data.status);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching KYC status:', error);
+        setKycStatus('pending');
+      }
+    };
+
+    fetchKYCStatus();
+  }, [currentAccount?.address]);
 
   // Convert OnChainInvoice to Investment format
   const convertToInvestment = (invoice: OnChainInvoice): Investment => {
