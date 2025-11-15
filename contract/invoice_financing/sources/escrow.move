@@ -4,6 +4,7 @@ use invoice_financing::invoice::{Invoice, buyer};
 use sui::coin::Coin;
 use sui::sui::SUI;
 use sui::balance::{Balance, zero};
+use invoice_financing::invoice::set_status;
 
 #[error]
 const E_NOT_BUYER: vector<u8> = b"Caller is not the invoice buyer";
@@ -40,9 +41,6 @@ public fun create_escrow_internal(
 entry fun pay_escrow(invoice: &mut Invoice, buyer_escrow: &mut BuyerEscrow, payment: Coin<SUI>, ctx: &TxContext) {
     let sender = ctx.sender();
 
-    // -------------------------------------------
-    // 1. Caller must be the invoice buyer
-    // -------------------------------------------
     assert!(
         sender == buyer(invoice),
         E_NOT_BUYER
@@ -58,4 +56,5 @@ entry fun pay_escrow(invoice: &mut Invoice, buyer_escrow: &mut BuyerEscrow, paym
     let balance = payment.into_balance();
     sui::balance::join(&mut buyer_escrow.escrow, balance);
     buyer_escrow.paid = true;
+    set_status(invoice, 1);
 }

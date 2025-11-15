@@ -10,7 +10,7 @@ public struct Invoice has key, store {
     due_date: u64,                // UNIX timestamp
     companies_info: vector<u8>,   // Encoded metadata (JSON, IPFS, ABI)
 
-    status: InvoiceStatus,        // 0=Created,1=Financing,2=Financed,3=Paid
+    status: u8,                   // 0=Created,1=Ready,2=Financed,3=Paid
     
     escrow_bps: u64,              // Buyer's collateral amount of the total (in BPS)
 
@@ -22,10 +22,8 @@ public fun buyer(invoice: &Invoice): address {
     invoice.buyer
 }
 
-public enum InvoiceStatus has store {
-    Created,
-    Financed,
-    Paid,
+public(package) fun set_status(invoice: &mut Invoice, new_status: u8) {
+    invoice.status = new_status;
 }
 
 public fun create_invoice_internal(
@@ -49,7 +47,7 @@ public fun create_invoice_internal(
         amount,
         due_date,
         companies_info,
-        status: InvoiceStatus::Created,
+        status: 0,
         escrow_bps,
         discount_bps,
         fee_bps,
