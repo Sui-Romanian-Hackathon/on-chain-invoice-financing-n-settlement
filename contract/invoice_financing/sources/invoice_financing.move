@@ -40,6 +40,10 @@ public fun invoice_id(funding: &Funding): ID {
     funding.invoice_id
 }
 
+public fun funder(funding: &Funding): address {
+    funding.funder
+}
+
 entry fun fund_invoice(invoice: &mut Invoice, buyer_escrow: &BuyerEscrow, payment: Coin<SUI>, ctx: &mut TxContext) {
     let sender = ctx.sender();
     let seller = invoice::supplier(invoice);

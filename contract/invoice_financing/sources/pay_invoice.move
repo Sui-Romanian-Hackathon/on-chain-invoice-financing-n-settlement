@@ -3,32 +3,44 @@ module invoice_financing::pay_invoice;
 use invoice_financing::invoice::Invoice;
 use invoice_financing::escrow::BuyerEscrow;
 use sui::sui::SUI;
-use sui::coin::Coin;
+use sui::coin::{Coin, split};
+use invoice_financing::invoice;
+use invoice_financing::escrow;
+use invoice_financing::invoice_financing::Funding;
+use invoice_financing::invoice_financing;
+use invoice_financing::treasury::{Treasury, deposit_fee};
+use invoice_financing::treasury;
 
 #[error]
 const E_NOT_BUYER: vector<u8> = b"Only the buyer can pay the invoice.";
+
+#[error]
+const E_CANNOT_PAY_INVOICE: vector<u8> = b"Invoice already paid or defaulted.";
 
 // payment = invoice amount (without discount) + discount (without fee) + treasury fee (taken out of the discount)
 //                                     FUNDER                                               TREASURY
 public entry fun pay_invoice(
     invoice: &mut Invoice,
     escrow: &mut BuyerEscrow,
-    payment: Coin<SUI>,
+    funding: &Funding,
+    treasury: &mut Treasury,
+    mut payment: Coin<SUI>,
     ctx: &mut TxContext
 ) {
     // Only the buyer can pay
-    assert!(invoice.buyer == ctx.sender(), E_NOT_BUYER);
+    assert!(invoice::buyer(invoice) == ctx.sender(), E_NOT_BUYER);
 
     // Check invoice is not already paid or defaulted
-    assert!(invoice.status != 3 && invoice.status != 4, b"Invoice already paid or defaulted.");
+    assert!(invoice::status(invoice) != 3 && invoice::status(invoice) != 4, E_CANNOT_PAY_INVOICE);
 
     // Split the payment amount from the coin
-    let invoice_payment = split(payment, invoice.amount, ctx);
-    let discount_payment = split(payment, (invoice.amount * invoice.discount_bps) / 10_000, ctx);
+    let treasury_fee_payment = split(&mut payment, (invoice::amount(invoice) * invoice::discount_bps(invoice) * treasury::treasury_fee_bps(treasury)) / 100_000_000, ctx);
 
     // Transfer payment to the supplier
-    transfer::public_transfer(payment, invoice.supplier);
+    deposit_fee(treasury, treasury_fee_payment, ctx);
+    transfer::public_transfer(payment, invoice_financing::funder(funding));
+    // transfer::public_transfer(discount_payment, invoice_financing::funder(funding));
 
     // Mark invoice as paid
-    invoice.status = 3;
+    invoice::set_status(invoice, 3);
 }
