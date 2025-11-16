@@ -3,7 +3,7 @@ module invoice_financing::escrow;
 use invoice_financing::invoice::{Invoice, buyer};
 use sui::coin::Coin;
 use sui::sui::SUI;
-use sui::balance::{Balance, zero};
+use sui::balance::{Balance, zero, split};
 use invoice_financing::invoice::set_status;
 
 #[error]
@@ -36,6 +36,19 @@ public fun paid(buyer_escrow: &BuyerEscrow): bool {
 
 public fun escrow_amount(buyer_escrow: &BuyerEscrow): u64 {
     buyer_escrow.escrow_amount
+}
+
+
+public(package) fun payback_escrow(buyer_escrow: &mut BuyerEscrow, ctx: &mut TxContext) {
+    let escrow = split(&mut buyer_escrow.escrow, buyer_escrow.escrow_amount);
+
+    transfer::public_transfer(escrow.into_coin(ctx), buyer_escrow.buyer);
+}
+
+public(package) fun collect_escrow(buyer_escrow: &mut BuyerEscrow, funder: address, ctx: &mut TxContext) {
+    let escrow = split(&mut buyer_escrow.escrow, buyer_escrow.escrow_amount);
+
+    transfer::public_transfer(escrow.into_coin(ctx), funder);
 }
 
 public fun create_escrow_internal(

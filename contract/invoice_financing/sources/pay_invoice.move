@@ -19,9 +19,9 @@ const E_CANNOT_PAY_INVOICE: vector<u8> = b"Invoice already paid or defaulted.";
 
 // payment = invoice amount (without discount) + discount (without fee) + treasury fee (taken out of the discount)
 //                                     FUNDER                                               TREASURY
-public entry fun pay_invoice(
+entry fun pay_invoice(
     invoice: &mut Invoice,
-    escrow: &mut BuyerEscrow,
+    buyer_escrow: &mut BuyerEscrow,
     funding: &Funding,
     treasury: &mut Treasury,
     mut payment: Coin<SUI>,
@@ -37,10 +37,10 @@ public entry fun pay_invoice(
     let treasury_fee_payment = split(&mut payment, (invoice::amount(invoice) * invoice::discount_bps(invoice) * treasury::treasury_fee_bps(treasury)) / 100_000_000, ctx);
 
     // Transfer payment to the supplier
-    deposit_fee(treasury, treasury_fee_payment, ctx);
+    deposit_fee(treasury, treasury_fee_payment);
     transfer::public_transfer(payment, invoice_financing::funder(funding));
-    // transfer::public_transfer(discount_payment, invoice_financing::funder(funding));
 
+    escrow::payback_escrow(buyer_escrow, ctx);    
     // Mark invoice as paid
     invoice::set_status(invoice, 3);
 }

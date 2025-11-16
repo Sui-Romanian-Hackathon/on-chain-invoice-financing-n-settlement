@@ -1,7 +1,5 @@
 module invoice_financing::invoice;
 
-use invoice_financing::escrow::BuyerEscrow;
-
 public struct Invoice has key, store {
     id: UID,
 
@@ -58,11 +56,8 @@ public fun create_invoice_internal(
     companies_info: vector<u8>,
     escrow_bps: u64,
     discount_bps: u64,
-    fee_bps: u64,
     ctx: &mut TxContext,
 ): Invoice {
-
-    //todo validate params
     
     Invoice {
         id: object::new(ctx),
@@ -74,6 +69,5 @@ public fun create_invoice_internal(
         status: 0,
         escrow_bps,
         discount_bps,
-        fee_bps,
     }
 }

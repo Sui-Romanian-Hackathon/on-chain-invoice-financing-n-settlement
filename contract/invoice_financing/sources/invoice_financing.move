@@ -28,6 +28,9 @@ const E_INVOICE_NOT_FUNDED: vector<u8> = b"The invoice is not funded";
 #[error]
 const E_INVOICE_ID: vector<u8> = b"Invoice ID not consistent over buyer's escrow and funding";
 
+#[error]
+const E_INVOICE_ACTIVE: vector<u8> = b"Invoice still active";
+
 public struct Funding has key, store {
     id: UID,
     invoice_id: ID,
@@ -81,6 +84,9 @@ entry fun fund_invoice(invoice: &mut Invoice, buyer_escrow: &BuyerEscrow, paymen
 
 entry fun collect_escrow(invoice: &mut Invoice, buyer_escrow: &mut BuyerEscrow, funding: &Funding, clock: &Clock,  ctx: &mut TxContext) {
     let sender = ctx.sender();
+
+    assert!(clock.timestamp_ms() > invoice::due_date(invoice), E_INVOICE_ACTIVE);
+
     assert!(
         sender == funding.funder,
         E_NOT_FUNDER
@@ -95,7 +101,8 @@ entry fun collect_escrow(invoice: &mut Invoice, buyer_escrow: &mut BuyerEscrow, 
         invoice::status(invoice) == 2,
         E_INVOICE_NOT_FUNDED
     );
-
+    escrow::collect_escrow(buyer_escrow, funding.funder, ctx);
+    invoice::set_status(invoice, 4);
 }
 
 public(package) fun create_funding_internal(invoice_id: ID, funder: address, ctx: &mut TxContext): Funding {

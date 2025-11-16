@@ -40,7 +40,7 @@ public fun set_fee_bps(treasury: &mut Treasury, caller: address, new_fee_bps: u6
     treasury.fee_bps = new_fee_bps;
 }
 
-public fun deposit_fee(treasury: &mut Treasury, coin: Coin<SUI>, _ctx: &mut TxContext) {
+public fun deposit_fee(treasury: &mut Treasury, coin: Coin<SUI>) {
     let fee_balance = into_balance(coin);
     join(&mut treasury.balance, fee_balance);
 }
