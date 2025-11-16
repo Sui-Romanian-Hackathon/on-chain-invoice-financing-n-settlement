@@ -73,7 +73,7 @@ const SettleDashboard = () => {
 
       console.log("✅ Found escrow object:", escrowObjectId);
 
-      const escrowAmount = (invoice.amountInSui * invoice.escrowBps) / 10000;
+      const escrowAmount = (invoice.amountInSui * (invoice?.escrowBps || 0)) / 10000;
 
       const result = await payEscrow(invoice.id, escrowObjectId, escrowAmount);
 
@@ -381,7 +381,7 @@ const SettleDashboard = () => {
                     {pendingInvoices.map((invoice) => {
                       const daysUntilDue = getDaysUntilDue(invoice.dueDate);
                       const isOverdue = daysUntilDue < 0;
-                      const escrowAmount = (invoice.amountInSui * invoice.escrowBps) / 10000;
+                      const escrowAmount = (invoice.amountInSui * (invoice?.escrowBps || 0)) / 10000;
 
                       return (
                         <Card key={invoice.id}>
@@ -392,8 +392,8 @@ const SettleDashboard = () => {
                                   Invoice #{invoice.invoiceNumber}
                                 </CardTitle>
                                 <CardDescription>
-                                  Supplier: {invoice.supplier.slice(0, 6)}...
-                                  {invoice.supplier.slice(-4)}
+                                  Supplier: {invoice.supplier?.slice(0, 6) || 'N/A'}...
+                                  {invoice.supplier?.slice(-4) || ''}
                                 </CardDescription>
                               </div>
                               <Badge variant="secondary">Pending Escrow</Badge>
@@ -417,7 +417,7 @@ const SettleDashboard = () => {
                                   {escrowAmount.toFixed(2)} SUI
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {invoice.escrowBps / 100}% of invoice
+                                  {(invoice?.escrowBps || 0) / 100}% of invoice
                                 </p>
                               </div>
                               <div>
