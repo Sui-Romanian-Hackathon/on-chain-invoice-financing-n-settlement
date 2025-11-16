@@ -46,7 +46,7 @@ export function useInvoices(filters?: InvoiceFilters) {
 
       const events = await suiClient.queryEvents({
         query: {
-          MoveEventType: `${packageId}::invoice_financing::InvoiceCreated`,
+          MoveEventType: `${packageId}::invoice_factory::InvoiceCreated`,
         },
         limit: 50, // Adjust as needed
         order: "descending",
@@ -310,7 +310,7 @@ export function useMyInvoices() {
       // This is the correct approach per the documentation - event-based indexing
       const events = await suiClient.queryEvents({
         query: {
-          MoveEventType: `${packageId}::invoice_financing::InvoiceCreated`,
+          MoveEventType: `${packageId}::invoice_factory::InvoiceCreated`,
         },
         limit: 100, // Adjust as needed
         order: "descending",
@@ -318,10 +318,10 @@ export function useMyInvoices() {
 
       console.log("Total InvoiceCreated events found:", events.data.length);
 
-      // Filter events where issuer matches current user
+      // Filter events where supplier (issuer) matches current user
       const myInvoiceEvents = events.data.filter((event) => {
         const parsedJson = event.parsedJson as any;
-        return parsedJson?.issuer === currentAccount.address;
+        return parsedJson?.supplier === currentAccount.address;
       });
 
       console.log("Events for this issuer:", myInvoiceEvents.length);
@@ -611,28 +611,39 @@ export function useMyPayableInvoices() {
 
     console.group("💳 Fetching My Payable Invoices (as Buyer/Debtor)");
     console.log("Buyer Address:", currentAccount.address);
+    console.log("Package ID:", packageId);
 
     try {
       // Get all InvoiceCreated events
       const events = await suiClient.queryEvents({
         query: {
-          MoveEventType: `${packageId}::invoice_financing::InvoiceCreated`,
+          MoveEventType: `${packageId}::invoice_factory::InvoiceCreated`,
         },
-        limit: 50,
+        limit: 100,
         order: "descending",
       });
 
-      console.log("Total invoices found:", events.data.length);
+      console.log("Total InvoiceCreated events found:", events.data.length);
+
+      // Filter events where buyer is the current user
+      const myBuyerEvents = events.data.filter((event) => {
+        const parsedJson = event.parsedJson as any;
+        return parsedJson?.buyer === currentAccount.address;
+      });
+
+      console.log("Events where I am the buyer:", myBuyerEvents.length);
 
       // Extract invoice IDs
-      const invoiceIds = events.data
+      const invoiceIds = myBuyerEvents
         .map((event) => {
           const parsedJson = event.parsedJson as any;
           return parsedJson?.invoice_id;
         })
         .filter(Boolean);
 
-      // Fetch each invoice and filter by buyer
+      console.log("Invoice IDs:", invoiceIds);
+
+      // Fetch each invoice object
       const invoiceObjects = await Promise.all(
         invoiceIds.map(async (id) => {
           try {
@@ -651,7 +662,9 @@ export function useMyPayableInvoices() {
         })
       );
 
-      // Parse and filter invoices where current user is the buyer
+      console.log("Successfully fetched objects:", invoiceObjects.filter(o => o !== null).length);
+
+      // Parse invoice data
       const invoices = invoiceObjects
         .filter(
           (obj): obj is NonNullable<typeof obj> =>
@@ -661,34 +674,57 @@ export function useMyPayableInvoices() {
           const content = obj.data!.content as any;
           const fields = content.fields;
 
+          // Helper to extract Option<T> values
+          const extractOption = (optionField: any) => {
+            if (!optionField || !optionField.vec) return undefined;
+            return optionField.vec.length > 0 ? optionField.vec[0] : undefined;
+          };
+
+          const investor = extractOption(fields.investor);
+          const investorPaid = extractOption(fields.investor_paid);
+          const supplierReceived = extractOption(fields.supplier_received);
+          const originationFee = extractOption(fields.origination_fee);
+
+          // Parse companies_info
+          let companiesInfoStr = "";
+          let companiesInfo: any = {};
+
+          if (fields.companies_info) {
+            try {
+              companiesInfoStr = Buffer.from(fields.companies_info).toString("utf-8");
+              companiesInfo = JSON.parse(companiesInfoStr);
+            } catch (e) {
+              console.warn("Failed to parse companies_info:", e);
+            }
+          }
+
           const invoice: OnChainInvoice = {
             id: obj.data!.objectId,
-            invoiceNumber: Buffer.from(fields.invoice_number).toString("utf-8"),
-            issuer: fields.issuer,
-            buyer: Buffer.from(fields.buyer).toString("utf-8"),
-            amount: fields.amount,
-            amountInSui: formatSuiAmount(fields.amount),
-            dueDate: parseInt(fields.due_date),
-            description: Buffer.from(fields.description).toString("utf-8"),
-            createdAt: parseInt(fields.created_at),
-            status: parseInt(fields.status),
-            financedBy: fields.financed_by,
-            investorPaid: fields.investor_paid,
-            investorPaidInSui: formatSuiAmount(fields.investor_paid || "0"),
-            supplierReceived: fields.supplier_received,
-            supplierReceivedInSui: formatSuiAmount(fields.supplier_received || "0"),
-            originationFeeCollected: fields.origination_fee_collected,
-            originationFeeCollectedInSui: formatSuiAmount(fields.origination_fee_collected || "0"),
-            discountRateBps: fields.discount_rate_bps,
+            invoiceNumber: companiesInfo.invoiceNumber || "N/A",
+            issuer: fields.supplier || "",
+            buyer: fields.buyer || "", // buyer is address, not bytes
+            supplier: fields.supplier || "",
+            amount: fields.amount?.toString() || "0",
+            amountInSui: fields.amount ? formatSuiAmount(fields.amount) : 0,
+            dueDate: fields.due_date ? parseInt(fields.due_date) * 1000 : Date.now(), // Convert seconds to ms
+            description: companiesInfo.description || companiesInfoStr,
+            createdAt: Date.now(), // TODO: Add created_at field
+            status: fields.status !== undefined ? parseInt(fields.status) : 0,
+            financedBy: investor,
+            investorPaid: investorPaid,
+            investorPaidInSui: investorPaid ? formatSuiAmount(investorPaid) : undefined,
+            supplierReceived: supplierReceived,
+            supplierReceivedInSui: supplierReceived ? formatSuiAmount(supplierReceived) : undefined,
+            originationFeeCollected: originationFee,
+            originationFeeCollectedInSui: originationFee ? formatSuiAmount(originationFee) : undefined,
+            discountRateBps: fields.discount_bps?.toString() || "0",
+            escrowBps: fields.escrow_bps !== undefined ? parseInt(fields.escrow_bps) : 0,
+            discountBps: fields.discount_bps !== undefined ? parseInt(fields.discount_bps) : 0,
+            feeBps: fields.fee_bps !== undefined ? parseInt(fields.fee_bps) : 0,
+            companiesInfo: companiesInfoStr,
           };
 
           return invoice;
-        })
-        .filter((invoice) => {
-          // Filter to only invoices where current user is the buyer
-          // Note: buyer field in contract is stored as vector<u8> (bytes)
-          // We compare the decoded buyer field with current address
-          return invoice.buyer === currentAccount.address;
         });
 
       console.log("My payable invoices:", invoices.length);
