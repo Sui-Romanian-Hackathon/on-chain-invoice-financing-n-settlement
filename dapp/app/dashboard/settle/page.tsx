@@ -5,6 +5,8 @@ import { useWalletKit } from "@mysten/wallet-kit";
 import Navigation from "@/components/Navigation";
 import { SettleInvoiceModal } from "@/components/SettleInvoiceModal";
 import { useMyPayableInvoices } from "@/hooks/useInvoices";
+import { usePayEscrow } from "@/hooks/usePayEscrow";
+import { toast } from "@/hooks/use-toast";
 import {
   OnChainInvoice,
   InvoiceStatus,
@@ -35,10 +37,12 @@ import { DebugPanel } from "@/components/DebugPanel";
 const SettleDashboard = () => {
   const { currentAccount } = useWalletKit();
   const { data: invoices, isLoading, error, refetch } = useMyPayableInvoices();
+  const { payEscrow, findEscrowObject, isLoading: isPayingEscrow } = usePayEscrow();
   const [settleModalOpen, setSettleModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<OnChainInvoice | null>(
     null
   );
+  const [payingEscrowFor, setPayingEscrowFor] = useState<string | null>(null);
 
   const handleSettleClick = (invoice: OnChainInvoice) => {
     setSelectedInvoice(invoice);
@@ -48,6 +52,42 @@ const SettleDashboard = () => {
   const handleSettleSuccess = () => {
     refetch();
     console.log("Invoice settled successfully!");
+  };
+
+  const handlePayEscrow = async (invoice: OnChainInvoice) => {
+    setPayingEscrowFor(invoice.id);
+
+    try {
+      console.log("🔍 Finding escrow object for invoice:", invoice.id);
+      const escrowObjectId = await findEscrowObject(invoice.id);
+
+      if (!escrowObjectId) {
+        toast({
+          title: "Escrow Object Not Found",
+          description: "Could not find the escrow object for this invoice. Please try again or contact support.",
+          variant: "destructive",
+        });
+        setPayingEscrowFor(null);
+        return;
+      }
+
+      console.log("✅ Found escrow object:", escrowObjectId);
+
+      const escrowAmount = (invoice.amountInSui * (invoice?.escrowBps || 0)) / 10000;
+
+      const result = await payEscrow(invoice.id, escrowObjectId, escrowAmount);
+
+      if (result?.success) {
+        // Refetch invoices after successful payment
+        setTimeout(() => {
+          refetch();
+        }, 2000);
+      }
+    } catch (error) {
+      console.error("Error paying escrow:", error);
+    } finally {
+      setPayingEscrowFor(null);
+    }
   };
 
   // Filter invoices by status
@@ -323,6 +363,125 @@ const SettleDashboard = () => {
                   </div>
                 )}
               </div>
+
+              {/* Pending Invoices - Need Escrow Payment */}
+              {pendingInvoices.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="text-2xl font-bold mb-4">
+                    Pending Invoices - Escrow Required ({pendingInvoices.length})
+                  </h2>
+                  <Alert className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      These invoices require you to pay escrow before they can be financed.
+                      Once escrow is paid, the invoice becomes available for investors to finance.
+                    </AlertDescription>
+                  </Alert>
+                  <div className="space-y-4">
+                    {pendingInvoices.map((invoice) => {
+                      const daysUntilDue = getDaysUntilDue(invoice.dueDate);
+                      const isOverdue = daysUntilDue < 0;
+                      const escrowAmount = (invoice.amountInSui * (invoice?.escrowBps || 0)) / 10000;
+
+                      return (
+                        <Card key={invoice.id}>
+                          <CardHeader>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <CardTitle className="text-lg">
+                                  Invoice #{invoice.invoiceNumber}
+                                </CardTitle>
+                                <CardDescription>
+                                  Supplier: {invoice.supplier?.slice(0, 6) || 'N/A'}...
+                                  {invoice.supplier?.slice(-4) || ''}
+                                </CardDescription>
+                              </div>
+                              <Badge variant="secondary">Pending Escrow</Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div>
+                                <p className="text-sm text-muted-foreground">
+                                  Invoice Amount
+                                </p>
+                                <p className="font-semibold">
+                                  {invoice.amountInSui.toFixed(2)} SUI
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">
+                                  Escrow Required
+                                </p>
+                                <p className="font-semibold text-primary">
+                                  {escrowAmount.toFixed(2)} SUI
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {(invoice?.escrowBps || 0) / 100}% of invoice
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">
+                                  Due Date
+                                </p>
+                                <p className="font-semibold">
+                                  {formatDate(invoice.dueDate)}
+                                </p>
+                                <p
+                                  className={`text-xs ${
+                                    isOverdue ? "text-destructive" : ""
+                                  }`}
+                                >
+                                  {isOverdue
+                                    ? `${Math.abs(daysUntilDue)} days overdue`
+                                    : `${daysUntilDue} days`}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">
+                                  Status
+                                </p>
+                                <p className="font-semibold text-sm">
+                                  Created - Awaiting Escrow
+                                </p>
+                              </div>
+                            </div>
+                            {invoice.description && (
+                              <div className="mt-4">
+                                <p className="text-sm text-muted-foreground">
+                                  Description
+                                </p>
+                                <p className="text-sm">{invoice.description}</p>
+                              </div>
+                            )}
+                          </CardContent>
+                          <CardFooter className="border-t pt-4 bg-muted/50">
+                            <div className="w-full">
+                              <p className="text-sm text-muted-foreground mb-2">
+                                Pay escrow to make this invoice available for financing
+                              </p>
+                              <Button
+                                className="w-full"
+                                onClick={() => handlePayEscrow(invoice)}
+                                disabled={payingEscrowFor === invoice.id}
+                              >
+                                {payingEscrowFor === invoice.id ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Processing Payment...
+                                  </>
+                                ) : (
+                                  `Pay Escrow - ${escrowAmount.toFixed(2)} SUI`
+                                )}
+                              </Button>
+                            </div>
+                          </CardFooter>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Settled Invoices */}
               {repaidInvoices.length > 0 && (
