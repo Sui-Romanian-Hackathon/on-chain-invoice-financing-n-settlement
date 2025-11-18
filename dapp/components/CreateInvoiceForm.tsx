@@ -262,7 +262,7 @@ const CreateInvoiceForm = ({ onSuccess }: CreateInvoiceFormProps) => {
                 Discount offered to investors (e.g., 5% = investor pays 95% of face value)
               </p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2" style={{display: "none"}}>
               <Label htmlFor="escrow">Escrow Requirement (%)</Label>
               <Input
                 id="escrow"
